@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام مزامنة الفروع وقراءة المستندات الموحد</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Cairo -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .dragover { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- شريط الرأس العلوي -->
+    <header class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-3 space-x-reverse">
+                <div class="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                    <i class="fa-solid fa-network-wired text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg md:text-xl font-bold tracking-wide">نظام ربط الفروع الموحد</h1>
+                    <p class="text-xs text-indigo-200">الاستخراج الآلي للمستندات • كاشف التكرار • مزامنة الإكسيل</p>
+                </div>
+            </div>
+
+            <!-- معلومات الفرع الحالي والموظف -->
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center bg-slate-800/80 rounded-lg px-3 py-1.5 border border-slate-700">
+                    <i class="fa-solid fa-store text-indigo-400 ml-2"></i>
+                    <select id="currentBranchSelect" class="bg-transparent text-sm font-semibold focus:outline-none cursor-pointer">
+                        {% for b in branches %}
+                        <option value="{{ b }}" class="bg-slate-800 text-white">{{ b }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="flex items-center bg-slate-800/80 rounded-lg px-3 py-1.5 border border-slate-700">
+                    <i class="fa-solid fa-user-tie text-indigo-400 ml-2"></i>
+                    <input id="employeeInput" type="text" placeholder="اسم الموظف" class="bg-transparent text-sm w-28 focus:outline-none placeholder-slate-400">
+                </div>
+
+                <button onclick="downloadExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-bold px-3.5 py-2 rounded-lg flex items-center shadow transition">
+                    <i class="fa-solid fa-file-excel ml-1.5 text-base"></i>
+                    تحميل Excel
+                </button>
+
+                <button onclick="openSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg text-sm transition" title="الإعدادات">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- المحتوى الرئيسي -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- القسم الأيمن: رفع المستند والتحقق -->
+        <section class="lg:col-span-5 flex flex-col space-y-5">
+
+            <!-- بطاقة الرفع -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-base font-bold text-slate-800 flex items-center">
+                        <i class="fa-solid fa-cloud-arrow-up text-indigo-600 ml-2"></i>
+                        إدخال صورة المستند
+                    </h2>
+                    <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-full">
+                        بطاقة رقم قومي أو شاشة زيروتك
+                    </span>
+                </div>
+
+                <!-- مساحة الإسقاط والرفع -->
+                <div id="dropZone" class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-xl p-6 text-center transition cursor-pointer relative bg-slate-50/50">
+                    <input type="file" id="fileInput" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                    
+                    <div id="uploadPrompt" class="space-y-2">
+                        <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto text-2xl">
+                            <i class="fa-solid fa-camera"></i>
+                        </div>
+                        <p class="font-bold text-slate-700 text-sm">اضغط لاختيار صورة أو اسحبها هنا</p>
+                        <p class="text-xs text-slate-400">يدعم كاميرا الموبايل والماسح الضوئي (JPG, PNG, WEBP)</p>
+                    </div>
+
+                    <!-- معاينة الصورة -->
+                    <div id="previewContainer" class="hidden">
+                        <img id="imagePreview" src="" alt="المعاينة" class="max-h-56 mx-auto rounded-lg shadow-sm border border-slate-200 object-contain">
+                        <button type="button" onclick="resetUpload(event)" class="mt-2 text-xs text-rose-600 hover:text-rose-700 font-bold">
+                            <i class="fa-solid fa-trash ml-1"></i> تغيير الصورة
+                        </button>
+                    </div>
+                </div>
+
+                <!-- زر بدء الفحص -->
+                <button id="scanBtn" onclick="analyzeImage()" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-md transition flex items-center justify-center disabled:opacity-50">
+                    <i class="fa-solid fa-wand-magic-sparkles ml-2"></i>
+                    <span>فحص محتويات الصورة والتحقق من التكرار</span>
+                </button>
+            </div>
+
+            <!-- بطاقة التنبيه بالتكرار (تظهر فقط عند وجود تطابق سابق) -->
+            <div id="duplicateAlertBox" class="hidden bg-rose-50 border-2 border-rose-500 rounded-2xl p-5 shadow-sm text-slate-800 animate-pulse">
+                <div class="flex items-start">
+                    <div class="w-10 h-10 bg-rose-500 text-white rounded-full flex items-center justify-center text-xl shrink-0 mt-0.5 ml-3">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-base font-extrabold text-rose-700">⚠️ تنبيه هام: هذه البيانات مسجلة مسبقاً!</h3>
+                        <p class="text-xs text-rose-600 mt-1">تم إدخال نفس الرقم القومي أو سيريال الجهاز مسبقاً في النظام:</p>
+                        
+                        <div class="mt-3 bg-white p-3 rounded-lg border border-rose-200 text-xs space-y-1.5 font-semibold text-slate-700">
+                            <div><span class="text-slate-400">الفرع المدخل:</span> <span id="dupBranch" class="text-indigo-700 font-bold"></span></div>
+                            <div><span class="text-slate-400">اسم الموظف:</span> <span id="dupEmployee"></span></div>
+                            <div><span class="text-slate-400">تاريخ الإدخال السابق:</span> <span id="dupDate"></span></div>
+                            <div><span class="text-slate-400">رقم العملية السابقة:</span> #<span id="dupRecordId"></span></div>
+                        </div>
+
+                        <div class="mt-3 text-xs text-rose-800 font-bold">
+                            طبقاً لإعدادات الإدارة، يمكنك إلغاء العملية أو تأكيد حفظها مع تدوين ملاحظة تكرار.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- كارت مراجعة البيانات المستخرجة وتأكيد الحفظ -->
+            <div id="resultCard" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-3">
+                <div class="flex items-center justify-between border-b pb-2">
+                    <h3 class="font-bold text-slate-800 text-sm flex items-center">
+                        <i class="fa-solid fa-clipboard-check text-emerald-600 ml-2"></i>
+                        البيانات المستخرجة (يمكنك تعديلها قبل الحفظ)
+                    </h3>
+                    <span id="confidenceBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                        دقة عالية
+                    </span>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-500 font-bold mb-1">نوع المستند</label>
+                        <select id="resDocType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-semibold">
+                            <option value="بطاقة شخصية">بطاقة شخصية (رقم قومي)</option>
+                            <option value="فك باسورد زيروتك">فك باسورد زيروتك (ZeroTech)</option>
+                            <option value="أخرى">أخرى</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-500 font-bold mb-1">الرقم الفريد (الرقم القومي 14 رقم / سيريال زيروتك)</label>
+                        <input type="text" id="resUniqueId" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-indigo-700 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-500 font-bold mb-1">الاسم بالكامل / موديل الجهاز</label>
+                        <input type="text" id="resTitle" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-semibold">
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-500 font-bold mb-1">بيانات إضافية (كود الفك / تاريخ الجهاز / تاريخ الميلاد)</label>
+                        <input type="text" id="resSecondary" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2">
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-500 font-bold mb-1">تفاصيل إضافية / ملاحظات</label>
+                        <textarea id="resDetails" rows="2" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2"></textarea>
+                    </div>
+
+                    <!-- خانة ملاحظة التكرار تظهر فقط إذا كان مكرراً -->
+                    <div id="duplicateNoteGroup" class="hidden">
+                        <label class="block text-rose-600 font-bold mb-1">سبب تأكيد الحفظ للمستند المكرر:</label>
+                        <input type="text" id="duplicateNoteInput" placeholder="اكتب مبرر الحفظ (مثلاً: العميل طلب إعادة ضبط مرة أخرى)" class="w-full bg-rose-50 border border-rose-300 rounded-lg p-2 text-rose-800">
+                    </div>
+                </div>
+
+                <!-- أزرار الإجراءات -->
+                <div class="pt-3 flex gap-2">
+                    <button id="normalSaveBtn" onclick="saveRecord(false)" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded-xl shadow transition text-xs flex items-center justify-center">
+                        <i class="fa-solid fa-check ml-1.5"></i>
+                        حفظ في الشيت المركزي
+                    </button>
+
+                    <button id="duplicateConfirmBtn" onclick="saveRecord(true)" class="hidden flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-3 rounded-xl shadow transition text-xs flex items-center justify-center">
+                        <i class="fa-solid fa-shield-halved ml-1.5"></i>
+                        تأكيد الحفظ (كمكرر)
+                    </button>
+
+                    <button onclick="resetAll()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-3 rounded-xl transition text-xs">
+                        إلغاء
+                    </button>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- القسم الأيسر: جدول السجلات الحية لجميع الفروع -->
+        <section class="lg:col-span-7 flex flex-col space-y-4">
+            
+            <!-- شريط الإحصائيات السريعة -->
+            <div class="grid grid-cols-3 gap-3">
+                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-slate-500 block">إجمالي المعاملات</span>
+                        <span id="statTotal" class="text-xl font-black text-slate-800">0</span>
+                    </div>
+                    <div class="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-database text-sm"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-slate-500 block">معاملات جديدة</span>
+                        <span id="statNew" class="text-xl font-black text-emerald-600">0</span>
+                    </div>
+                    <div class="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-circle-check text-sm"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-slate-500 block">تكرارات تم رصدها</span>
+                        <span id="statDup" class="text-xl font-black text-rose-600">0</span>
+                    </div>
+                    <div class="w-9 h-9 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-triangle-exclamation text-sm"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- جدول العمليات -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex-1 flex flex-col">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h2 class="text-base font-bold text-slate-800 flex items-center">
+                        <i class="fa-solid fa-list-check text-indigo-600 ml-2"></i>
+                        سجل العمليات الموحد لكافة الفروع
+                    </h2>
+                    
+                    <div class="flex items-center gap-2">
+                        <select id="filterBranchSelect" onchange="loadRecords()" class="bg-slate-50 border border-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none">
+                            <option value="الكل">جميع الفروع</option>
+                            {% for b in branches %}
+                            <option value="{{ b }}">{{ b }}</option>
+                            {% endfor %}
+                        </select>
+                        <button onclick="loadRecords()" class="text-slate-400 hover:text-indigo-600 p-1.5" title="تحديث السجل">
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- الجدول المتجاوب -->
+                <div class="overflow-x-auto flex-1 max-h-[500px]">
+                    <table class="w-full text-right text-xs">
+                        <thead class="bg-slate-50 text-slate-600 uppercase font-bold sticky top-0 border-b">
+                            <tr>
+                                <th class="p-2.5">#</th>
+                                <th class="p-2.5">الفرع / الموظف</th>
+                                <th class="p-2.5">النوع</th>
+                                <th class="p-2.5">الرقم القومي / السيريال</th>
+                                <th class="p-2.5">الاسم / الموديل</th>
+                                <th class="p-2.5">الحالة</th>
+                                <th class="p-2.5">التاريخ والوقت</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordsTableBody" class="divide-y divide-slate-100">
+                            <tr>
+                                <td colspan="7" class="text-center py-8 text-slate-400">
+                                    <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
+                                    <div>جاري تحميل السجلات...</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- نافذة الإعدادات Modal -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b pb-3">
+                <h3 class="font-bold text-slate-800 text-base flex items-center">
+                    <i class="fa-solid fa-sliders text-indigo-600 ml-2"></i>
+                    إعدادات الربط والذكاء الاصطناعي
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">مفتاح الذكاء الاصطناعي (Gemini API Key)</label>
+                    <input type="password" id="cfgGeminiKey" placeholder="AIzaSy..." class="w-full border border-slate-300 rounded-lg p-2 font-mono">
+                    <p class="text-[10px] text-slate-400 mt-1">يُستخدم لقراءة البطاقات المصرية وشاشات زيروتك بدقة 100% مجاناً عبر Google AI Studio.</p>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">رابط Google Sheets Webhook</label>
+                    <input type="text" id="cfgGoogleWebhook" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border border-slate-300 rounded-lg p-2 font-mono">
+                    <p class="text-[10px] text-slate-400 mt-1">الرابط الناتج من كود Apps Script المرفق في ملف <code>google_apps_script.js</code>.</p>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">قائمة الفروع (مفصولة بفاصلة)</label>
+                    <textarea id="cfgBranchesList" rows="2" class="w-full border border-slate-300 rounded-lg p-2 font-semibold"></textarea>
+                </div>
+            </div>
+
+            <div class="pt-3 border-t flex justify-end gap-2">
+                <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs">إلغاء</button>
+                <button onclick="saveSettings()" class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow">حفظ الإعدادات</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- كود الجافاسكريبت للتحكم بالواجهة -->
+    <script>
+        let selectedFile = null;
+        let currentAnalyzedFilename = "";
+
+        // تحميل الإعدادات المحلية عند فتح الصفحة
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedBranch = localStorage.getItem('branch_sync_current_branch');
+            if (savedBranch) {
+                document.getElementById('currentBranchSelect').value = savedBranch;
+            }
+            const savedEmployee = localStorage.getItem('branch_sync_employee');
+            if (savedEmployee) {
+                document.getElementById('employeeInput').value = savedEmployee;
+            }
+
+            document.getElementById('currentBranchSelect').addEventListener('change', (e) => {
+                localStorage.setItem('branch_sync_current_branch', e.target.value);
+            });
+            document.getElementById('employeeInput').addEventListener('input', (e) => {
+                localStorage.setItem('branch_sync_employee', e.target.value);
+            });
+
+            setupDragAndDrop();
+            loadRecords();
+        });
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    handleFileSelect(e.target.files[0]);
+                }
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('dragover');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('dragover');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                if (dt.files && dt.files[0]) {
+                    handleFileSelect(dt.files[0]);
+                }
+            });
+        }
+
+        function handleFileSelect(file) {
+            selectedFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('imagePreview').src = e.target.result;
+                document.getElementById('uploadPrompt').classList.add('hidden');
+                document.getElementById('previewContainer').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function resetUpload(event) {
+            if (event) event.stopPropagation();
+            selectedFile = null;
+            document.getElementById('fileInput').value = "";
+            document.getElementById('imagePreview').src = "";
+            document.getElementById('uploadPrompt').classList.remove('hidden');
+            document.getElementById('previewContainer').classList.add('hidden');
+            document.getElementById('resultCard').classList.add('hidden');
+            document.getElementById('duplicateAlertBox').classList.add('hidden');
+        }
+
+        function resetAll() {
+            resetUpload();
+        }
+
+        async function analyzeImage() {
+            if (!selectedFile) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'يرجى اختيار صورة أولاً',
+                    text: 'قم بالتقاط صورة للبطاقة أو شاشة جهاز زيروتك أو رفعها من الجهاز',
+                    confirmButtonText: 'حسناً'
+                });
+                return;
+            }
+
+            const branchName = document.getElementById('currentBranchSelect').value;
+            const employeeName = document.getElementById('employeeInput').value;
+
+            const scanBtn = document.getElementById('scanBtn');
+            scanBtn.disabled = true;
+            scanBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin ml-2"></i> جاري فحص المستند وقراءة البيانات...`;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('branch_name', branchName);
+            formData.append('employee_name', employeeName);
+
+            try {
+                const res = await fetch('/api/analyze', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentAnalyzedFilename = data.image_filename;
+                    populateExtractedData(data.extracted);
+
+                    if (data.is_duplicate) {
+                        showDuplicateWarning(data.duplicate_info);
+                    } else {
+                        hideDuplicateWarning();
+                    }
+
+                    document.getElementById('resultCard').classList.remove('hidden');
+                } else {
+                    Swal.fire({ icon: 'error', title: 'خطأ أثناء المعالجة', text: data.detail || 'تعذر تحليل الصورة' });
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'فشل الاتصال بالخادم', text: err.message });
+            } finally {
+                scanBtn.disabled = false;
+                scanBtn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles ml-2"></i> فحص محتويات الصورة والتحقق من التكرار`;
+            }
+        }
+
+        function populateExtractedData(ext) {
+            document.getElementById('resDocType').value = ext.doc_type || 'بطاقة شخصية';
+            document.getElementById('resUniqueId').value = ext.unique_id || '';
+            document.getElementById('resTitle').value = ext.title_or_name || '';
+            document.getElementById('resSecondary').value = ext.secondary_data || '';
+            document.getElementById('resDetails').value = ext.all_details || '';
+            document.getElementById('confidenceBadge').textContent = `دقة الاستخراج: ${ext.confidence || 'عالية'}`;
+        }
+
+        function showDuplicateWarning(dupInfo) {
+            document.getElementById('duplicateAlertBox').classList.remove('hidden');
+            document.getElementById('dupBranch').textContent = dupInfo.branch_name;
+            document.getElementById('dupEmployee').textContent = dupInfo.employee_name || 'غير محدد';
+            document.getElementById('dupDate').textContent = dupInfo.created_at;
+            document.getElementById('dupRecordId').textContent = dupInfo.id;
+
+            // ضبط أزرار الحفظ لإظهار خيار التأكيد
+            document.getElementById('normalSaveBtn').classList.add('hidden');
+            document.getElementById('duplicateConfirmBtn').classList.remove('hidden');
+            document.getElementById('duplicateNoteGroup').classList.remove('hidden');
+
+            Swal.fire({
+                icon: 'warning',
+                title: '⚠️ تحذير: بيانات مكررة!',
+                html: `هذا المستند تم إدخاله مسبقاً من قبل: <b>${dupInfo.branch_name}</b><br>بتاريخ: <b>${dupInfo.created_at}</b><br><br>هل تريد مراجعة البيانات وتأكيد الحفظ كمكرر؟`,
+                confirmButtonText: 'مراجعة وتأكيد',
+                cancelButtonText: 'إلغاء',
+                showCancelButton: true,
+                confirmButtonColor: '#d97706',
+                cancelButtonColor: '#64748b'
+            }).then((result) => {
+                if (!result.isConfirmed) {
+                    resetAll();
+                }
+            });
+        }
+
+        function hideDuplicateWarning() {
+            document.getElementById('duplicateAlertBox').classList.add('hidden');
+            document.getElementById('normalSaveBtn').classList.remove('hidden');
+            document.getElementById('duplicateConfirmBtn').classList.add('hidden');
+            document.getElementById('duplicateNoteGroup').classList.add('hidden');
+        }
+
+        async function saveRecord(isDuplicate) {
+            const branchName = document.getElementById('currentBranchSelect').value;
+            const employeeName = document.getElementById('employeeInput').value;
+            const docType = document.getElementById('resDocType').value;
+            const uniqueId = document.getElementById('resUniqueId').value.trim();
+            const titleOrName = document.getElementById('resTitle').value.trim();
+            const secondaryData = document.getElementById('resSecondary').value.trim();
+            const allDetails = document.getElementById('resDetails').value.trim();
+            const duplicateNote = document.getElementById('duplicateNoteInput').value.trim();
+
+            if (!uniqueId) {
+                Swal.fire({ icon: 'warning', title: 'تنبيه', text: 'حقل الرقم القومي / السيريال مطلوب ولا يمكن تركه فارغاً' });
+                return;
+            }
+
+            const payload = {
+                branch_name: branchName,
+                employee_name: employeeName,
+                doc_type: docType,
+                unique_id: uniqueId,
+                title_or_name: titleOrName,
+                secondary_data: secondaryData,
+                all_details: allDetails,
+                image_filename: currentAnalyzedFilename,
+                is_duplicate: isDuplicate,
+                duplicate_note: isDuplicate ? (duplicateNote || "تم التأكيد يدوياً بواسطة الفرع") : ""
+            };
+
+            try {
+                const res = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'تم الحفظ والمزامنة بنجاح!',
+                        text: data.google_synced ? 'تم إدراج السجل في Google Sheets وشيت الإكسيل فورياً' : 'تم الحفظ في قاعدة البيانات المركزية',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    resetAll();
+                    loadRecords();
+                } else {
+                    Swal.fire({ icon: 'error', title: 'خطأ', text: data.message });
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'فشل الحفظ', text: err.message });
+            }
+        }
+
+        async function loadRecords() {
+            const branch = document.getElementById('filterBranchSelect').value;
+            const tbody = document.getElementById('recordsTableBody');
+
+            try {
+                const url = branch && branch !== 'الكل' ? `/api/records?branch=${encodeURIComponent(branch)}` : '/api/records';
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.success) {
+                    renderTable(data.records);
+                    updateStats(data.records);
+                }
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-rose-500">فشل في تحميل السجلات</td></tr>`;
+            }
+        }
+
+        function renderTable(records) {
+            const tbody = document.getElementById('recordsTableBody');
+            if (!records || records.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-slate-400">لا توجد عمليات مسجلة حتى الآن</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = records.map(r => {
+                const isDup = r.is_duplicate === 1;
+                const statusBadge = isDup 
+                    ? `<span class="bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full text-[10px]"><i class="fa-solid fa-triangle-exclamation ml-1"></i> مكرر</span>` 
+                    : `<span class="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full text-[10px]"><i class="fa-solid fa-check ml-1"></i> جديد</span>`;
+                
+                return `
+                <tr class="hover:bg-slate-50 transition ${isDup ? 'bg-rose-50/40' : ''}">
+                    <td class="p-2.5 font-bold text-slate-400">#${r.id}</td>
+                    <td class="p-2.5">
+                        <div class="font-bold text-slate-800">${r.branch_name}</div>
+                        <div class="text-[10px] text-slate-400">${r.employee_name || 'موظف غير محدد'}</div>
+                    </td>
+                    <td class="p-2.5">
+                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-semibold">${r.doc_type}</span>
+                    </td>
+                    <td class="p-2.5 font-mono font-bold text-indigo-700">${r.unique_id}</td>
+                    <td class="p-2.5 text-slate-700 font-semibold">${r.title_or_name || '-'}</td>
+                    <td class="p-2.5">${statusBadge}</td>
+                    <td class="p-2.5 text-slate-500 text-[10px]">${r.created_at}</td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        function updateStats(records) {
+            const total = records.length;
+            const dup = records.filter(r => r.is_duplicate === 1).length;
+            const newCount = total - dup;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statNew').textContent = newCount;
+            document.getElementById('statDup').textContent = dup;
+        }
+
+        function downloadExcel() {
+            window.location.href = '/api/export-excel';
+        }
+
+        async function openSettingsModal() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                document.getElementById('cfgGeminiKey').value = data.gemini_api_key || '';
+                document.getElementById('cfgGoogleWebhook').value = data.google_webhook_url || '';
+                document.getElementById('cfgBranchesList').value = data.branches_list || '';
+                document.getElementById('settingsModal').classList.remove('hidden');
+            } catch (err) {
+                alert('فشل في جلب الإعدادات');
+            }
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        async function saveSettings() {
+            const payload = {
+                gemini_api_key: document.getElementById('cfgGeminiKey').value.trim(),
+                google_webhook_url: document.getElementById('cfgGoogleWebhook').value.trim(),
+                branches_list: document.getElementById('cfgBranchesList').value.trim()
+            };
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    Swal.fire({ icon: 'success', title: 'تم الحفظ', text: 'تم تحديث الإعدادات بنجاح', timer: 1500, showConfirmButton: false });
+                    closeSettingsModal();
+                    setTimeout(() => location.reload(), 1500);
+                }
+            } catch (err) {
+                alert('فشل في حفظ الإعدادات');
+            }
+        }
+    </script>
+</body>
+</html>
