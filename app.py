@@ -25,7 +25,7 @@ app = FastAPI(title="نظام مزامنة الفروع وقراءة المست�
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
+templates = Jinja2Templates(directory=[TEMPLATES_DIR, BASE_DIR])
 
 class SaveRecordRequest(BaseModel):
     branch_name: str
